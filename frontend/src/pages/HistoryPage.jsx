@@ -3,7 +3,10 @@ import { motion } from 'framer-motion';
 import { History, TrendingUp, FileText, Calendar, Award, RefreshCw } from 'lucide-react';
 import PageWrapper from '../components/PageWrapper';
 import { useResume } from '../context/ResumeContext';
-import { getHistory } from '../services/api';
+import { useAuth } from '../context/AuthContext';
+import { getHistory, deleteHistoryItem } from '../services/api';
+import Modal from '../components/Modal';
+import { Trash2, AlertCircle, ExternalLink } from 'lucide-react';
 
 /* Inline mini sparkline SVG */
 function Sparkline({ data, color = '#06b6d4' }) {
@@ -52,22 +55,41 @@ const rowVariants = {
 };
 
 export default function HistoryPage() {
+    const { user } = useAuth();
     const { history, setHistory } = useResume();
     const [loading, setLoading] = useState(false);
+    const [selectedItem, setSelectedItem] = useState(null);
+    const [itemToDelete, setItemToDelete] = useState(null);
+    const [isDeleting, setIsDeleting] = useState(false);
 
     useEffect(() => {
-        if (history.length === 0) {
+        if (history.length === 0 && user?.token) {
             setLoading(true);
-            getHistory()
+            getHistory(user.token)
                 .then(d => setHistory(d))
                 .catch(() => { })
                 .finally(() => setLoading(false));
         }
-    }, []);
+    }, [user?.token, history.length, setHistory]);
 
     const refresh = () => {
+        if (!user?.token) return;
         setLoading(true);
-        getHistory().then(d => setHistory(d)).catch(() => { }).finally(() => setLoading(false));
+        getHistory(user.token).then(d => setHistory(d)).catch(() => { }).finally(() => setLoading(false));
+    };
+
+    const handleDelete = async () => {
+        if (!itemToDelete || !user?.token) return;
+        setIsDeleting(true);
+        try {
+            await deleteHistoryItem(itemToDelete.id, user.token);
+            setHistory(history.filter(h => h.id !== itemToDelete.id));
+            setItemToDelete(null);
+        } catch (err) {
+            console.error('Failed to delete:', err);
+        } finally {
+            setIsDeleting(false);
+        }
     };
 
     return (
@@ -134,7 +156,7 @@ export default function HistoryPage() {
                         <table className="w-full">
                             <thead>
                                 <tr className="border-b border-white/5">
-                                    {['File / Role', 'Date', 'Scores', 'Progress Timeline', 'ATS Keywords Missing', 'Status'].map(h => (
+                                    {['File / Role', 'Date', 'Scores', 'Progress Timeline', 'ATS Keywords Missing', 'Status', 'Actions'].map(h => (
                                         <th key={h} className="text-left text-xs font-semibold text-nexus-muted px-5 py-4 uppercase tracking-wide">
                                             {h}
                                         </th>
@@ -190,6 +212,24 @@ export default function HistoryPage() {
                                                 {item.overall_score >= 80 ? '⬤ Excellent' : item.overall_score >= 60 ? '⬤ Good' : '⬤ Needs Work'}
                                             </span>
                                         </td>
+                                        <td className="px-5 py-4">
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    onClick={() => setSelectedItem(item)}
+                                                    className="p-1.5 rounded-lg text-nexus-muted hover:text-nexus-cyan hover:bg-white/5 transition-all"
+                                                    title="View Details"
+                                                >
+                                                    <ExternalLink size={16} />
+                                                </button>
+                                                <button
+                                                    onClick={() => setItemToDelete(item)}
+                                                    className="p-1.5 rounded-lg text-nexus-muted hover:text-rose-400 hover:bg-rose-500/10 transition-all"
+                                                    title="Delete"
+                                                >
+                                                    <Trash2 size={16} />
+                                                </button>
+                                            </div>
+                                        </td>
                                     </motion.tr>
                                 ))}
                             </tbody>
@@ -218,6 +258,107 @@ export default function HistoryPage() {
                     </div>
                 </motion.div>
             )}
+
+            {/* Detail Modal */}
+            <Modal
+                isOpen={!!selectedItem}
+                onClose={() => setSelectedItem(null)}
+                title="Analysis Details"
+                maxWidth="max-w-4xl"
+            >
+                {selectedItem && (
+                    <div className="space-y-6">
+                        <div className="flex justify-between items-start">
+                            <div>
+                                <h4 className="text-2xl font-black text-nexus-text mb-1">{selectedItem.filename}</h4>
+                                <p className="text-nexus-muted flex items-center gap-2">
+                                    <span className="text-nexus-cyan font-medium">{selectedItem.job_role}</span>
+                                    <span>•</span>
+                                    <span>{new Date(selectedItem.date).toLocaleDateString()}</span>
+                                </p>
+                            </div>
+                            <div className={`text-4xl font-black ${scoreColor(selectedItem.overall_score)}`}>
+                                {selectedItem.overall_score}<span className="text-lg opacity-60">/100</span>
+                            </div>
+                        </div>
+
+                        <div className="grid md:grid-cols-3 gap-4">
+                            <div className="glass-card-sm p-4 text-center">
+                                <div className="text-xs text-nexus-muted uppercase mb-1">ATS Match</div>
+                                <div className="text-xl font-bold text-indigo-400">{selectedItem.ats_score}%</div>
+                            </div>
+                            <div className="glass-card-sm p-4 text-center">
+                                <div className="text-xs text-nexus-muted uppercase mb-1">Clarity Score</div>
+                                <div className="text-xl font-bold text-cyan-400">{selectedItem.clarity_score}%</div>
+                            </div>
+                            <div className="glass-card-sm p-4 text-center">
+                                <div className="text-xs text-nexus-muted uppercase mb-1">Missing Keywords</div>
+                                <div className="text-xl font-bold text-rose-400">{(selectedItem.keywords_missing || []).length}</div>
+                            </div>
+                        </div>
+
+                        <div className="space-y-4">
+                            <h5 className="font-bold text-nexus-text flex items-center gap-2">
+                                <AlertCircle size={16} className="text-rose-400" /> Key Optimization Gaps
+                            </h5>
+                            <div className="flex flex-wrap gap-2">
+                                {(selectedItem.keywords_missing || []).map(k => (
+                                    <span key={k} className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-nexus-muted text-sm font-mono">
+                                        {k}
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="pt-4 border-t border-white/5 flex gap-3">
+                            <button className="btn-primary py-2.5 px-6 text-xs">
+                                Optimize Resume
+                            </button>
+                            <button onClick={() => setSelectedItem(null)} className="btn-secondary py-2.5 px-6 text-xs">
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                )}
+            </Modal>
+
+            {/* Delete Confirmation Modal */}
+            <Modal
+                isOpen={!!itemToDelete}
+                onClose={() => setItemToDelete(null)}
+                title="Confirm Deletion"
+                maxWidth="max-w-md"
+            >
+                <div className="text-center py-4">
+                    <div className="w-16 h-16 rounded-full bg-rose-500/10 flex items-center justify-center mx-auto mb-4 border border-rose-500/20">
+                        <Trash2 size={24} className="text-rose-400" />
+                    </div>
+                    <h4 className="text-xl font-bold text-nexus-text mb-2">Are you sure?</h4>
+                    <p className="text-nexus-muted text-sm mb-6">
+                        This will permanently delete the analysis for <span className="text-white font-medium">{itemToDelete?.filename}</span>. This action cannot be undone.
+                    </p>
+                    <div className="flex gap-3">
+                        <button
+                            onClick={() => setItemToDelete(null)}
+                            className="btn-secondary flex-1 py-3"
+                            disabled={isDeleting}
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            onClick={handleDelete}
+                            className="bg-rose-500 hover:bg-rose-400 text-white font-bold py-3 px-6 rounded-xl flex-1 transition-all flex items-center justify-center gap-2"
+                            disabled={isDeleting}
+                        >
+                            {isDeleting ? (
+                                <RefreshCw size={16} className="animate-spin" />
+                            ) : (
+                                <>Delete Now</>
+                            )}
+                        </button>
+                    </div>
+                </div>
+            </Modal>
         </PageWrapper>
     );
 }

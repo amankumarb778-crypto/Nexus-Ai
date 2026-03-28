@@ -1,6 +1,7 @@
 const express = require('express');
 const multer = require('multer');
 const { analyzeResume } = require('../controllers/analyzeController');
+const { protect } = require('../middleware/auth');
 
 const router = express.Router();
 const upload = multer({
@@ -16,6 +17,6 @@ const upload = multer({
     },
 });
 
-router.post('/', upload.single('resume'), analyzeResume);
+router.post('/', protect, upload.single('resume'), analyzeResume);
 
 module.exports = router;

@@ -4,6 +4,7 @@ import { Sparkles, ArrowRight, Copy, CheckCheck, Loader2, RotateCcw, ChevronRigh
 import PageWrapper from '../components/PageWrapper';
 import ErrorBanner from '../components/ErrorBanner';
 import { useResume } from '../context/ResumeContext';
+import { useAuth } from '../context/AuthContext';
 import { improveBullet } from '../services/api';
 
 const EXAMPLES = [
@@ -49,6 +50,7 @@ function CopyBtn({ text }) {
 }
 
 export default function BulletImproverPage() {
+    const { user } = useAuth();
     const { jobRole, analysisResult } = useResume();
     const [bullet, setBullet] = useState('');
     const [result, setResult] = useState(null);
@@ -65,7 +67,12 @@ export default function BulletImproverPage() {
         setError(null);
         setResult(null);
         try {
-            const data = await improveBullet(bullet, jobRole);
+            if (!user) {
+                setError('Please log in to use the AI Bullet Improver.');
+                setLocalLoading(false);
+                return;
+            }
+            const data = await improveBullet(bullet, jobRole, user.token);
             setResult(data);
         } catch (err) {
             setError(err?.response?.data?.error || 'Backend unavailable. Check the server on port 4000.');

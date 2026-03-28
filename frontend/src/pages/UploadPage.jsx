@@ -3,12 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     Upload, FileText, X, CheckCircle, Loader2,
-    ShieldCheck, ChevronDown, AlertCircle
+    ShieldCheck, ChevronDown, AlertCircle, Brain, Cpu, Sparkles, Key
 } from 'lucide-react';
 import PageWrapper from '../components/PageWrapper';
 import ErrorBanner from '../components/ErrorBanner';
 import { useResume } from '../context/ResumeContext';
+import { useAuth } from '../context/AuthContext';
 import { analyzeResume } from '../services/api';
+import Modal from '../components/Modal';
 
 const JOB_ROLES = [
     'Software Engineer', 'Senior Software Engineer', 'Full Stack Developer',
@@ -20,6 +22,7 @@ const JOB_ROLES = [
 
 export default function UploadPage() {
     const navigate = useNavigate();
+    const { user } = useAuth();
     const { setFile, jobRole, setJobRole, setAnalysisResult, setLoading, loading, error, setError, clearError } = useResume();
 
     const [dragging, setDragging] = useState(false);
@@ -59,7 +62,12 @@ export default function UploadPage() {
         setLoading(true);
         setError(null);
         try {
-            const result = await analyzeResume(localFile, jobRole);
+            if (!user) {
+                setError('You must be logged in to analyze a resume.');
+                setLoading(false);
+                return;
+            }
+            const result = await analyzeResume(localFile, jobRole, user.token);
             setAnalysisResult(result);
             navigate('/dashboard');
         } catch (err) {
@@ -222,6 +230,70 @@ export default function UploadPage() {
                     </div>
                 </motion.div>
             </div>
+
+            {/* AI Analysis Processing Modal */}
+            <Modal
+                isOpen={loading}
+                onClose={() => { }} // Disable closing during analysis
+                showClose={false}
+                blur={true}
+                maxWidth="max-w-md"
+            >
+                <div className="text-center py-8">
+                    <div className="relative w-24 h-24 mx-auto mb-8">
+                        {/* Outer rotating ring */}
+                        <motion.div
+                            className="absolute inset-0 rounded-full border-2 border-cyan-500/20 border-t-cyan-400"
+                            animate={{ rotate: 360 }}
+                            transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                        />
+                        {/* Inner rotating ring */}
+                        <motion.div
+                            className="absolute inset-4 rounded-full border-2 border-indigo-500/20 border-b-indigo-400"
+                            animate={{ rotate: -360 }}
+                            transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
+                        />
+                        {/* Core icon */}
+                        <div className="absolute inset-0 flex items-center justify-center">
+                            <motion.div
+                                animate={{ scale: [1, 1.2, 1] }}
+                                transition={{ duration: 2, repeat: Infinity }}
+                            >
+                                <Brain size={32} className="text-nexus-cyan fill-nexus-cyan/20" />
+                            </motion.div>
+                        </div>
+                    </div>
+
+                    <h3 className="text-2xl font-black text-nexus-text mb-2">Neural Analysis in Progress</h3>
+                    <p className="text-nexus-muted text-sm mb-8"> Our AI is cross-referencing your resume against <span className="text-nexus-cyan font-bold">100+ ATS algorithms</span> ...</p>
+
+                    <div className="space-y-4 max-w-xs mx-auto">
+                        {[
+                            { icon: Cpu, label: 'Parsing Document Structure', delay: 0 },
+                            { icon: Key, label: 'Extracting Industry Keywords', delay: 1.5 },
+                            { icon: Sparkles, label: 'Generating Score Metrics', delay: 3 },
+                        ].map((step, i) => (
+                            <motion.div
+                                key={i}
+                                initial={{ opacity: 0, x: -10 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                transition={{ delay: step.delay }}
+                                className="flex items-center gap-3 text-left"
+                            >
+                                <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center border border-white/10">
+                                    <step.icon size={14} className="text-nexus-cyan" />
+                                </div>
+                                <span className="text-xs font-semibold text-nexus-muted uppercase tracking-widest">{step.label}</span>
+                                <motion.span
+                                    className="ml-auto w-1.5 h-1.5 rounded-full bg-cyan-400"
+                                    animate={{ opacity: [0, 1, 0] }}
+                                    transition={{ duration: 1, repeat: Infinity }}
+                                />
+                            </motion.div>
+                        ))}
+                    </div>
+                </div>
+            </Modal>
         </PageWrapper>
     );
 }

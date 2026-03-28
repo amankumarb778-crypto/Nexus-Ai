@@ -1,5 +1,7 @@
-const { PDFParse } = require('pdf-parse');
+const pdf = require('pdf-parse');
 const { callLLM } = require('../utils/llm');
+const Resume = require('../models/Resume');
+const Analysis = require('../models/Analysis');
 
 exports.analyzeResume = async (req, res) => {
     try {
@@ -12,15 +14,15 @@ exports.analyzeResume = async (req, res) => {
 
         // Extract text based on file type
         if (req.file.mimetype === 'application/pdf') {
-            const parser = new PDFParse({ data: req.file.buffer });
             try {
-                const parsed = await parser.getText();
-                resumeText = parsed.text;
-            } finally {
-                await parser.destroy();
+                const data = await pdf(req.file.buffer);
+                resumeText = data.text;
+            } catch (pdfError) {
+                console.error('PDF parsing error:', pdfError.message);
+                return res.status(422).json({ error: 'Failed to parse PDF file. It might be corrupted or protected.' });
             }
         } else {
-            // DOCX – in production use mammoth; for now extract raw text from buffer
+            // DOCX or other - fallback to buffer string
             resumeText = req.file.buffer.toString('utf-8', 0, Math.min(req.file.buffer.length, 8000));
         }
 
@@ -36,14 +38,39 @@ You MUST return a JSON object ONLY with:
 4) strengths (array of strings)
 5) weaknesses (array of strings)
 6) ats_keywords_missing (array of strings)
-7) star_bullets (object mapping original bullet text to improved STAR-method version with quantifiable metrics)
+7) star_bullets (object mapping original bullet text to improved STAR-method version)
 
 Resume text:
 ${resumeText.slice(0, 6000)}`;
 
-        const analysis = await callLLM(systemPrompt, jobRole);
+        const analysisResult = await callLLM(systemPrompt, jobRole);
 
-        return res.json(analysis);
+        // Save Resume to DB
+        const resumeDocument = await Resume.create({
+            user: req.user._id,
+            filename: req.file.originalname,
+            text: resumeText,
+            jobRole: jobRole
+        });
+
+        // Save Analysis to DB
+        const analysisDocument = await Analysis.create({
+            user: req.user._id,
+            resume: resumeDocument._id,
+            jobRole: jobRole,
+            overallScore: analysisResult.overall_score,
+            atsScore: analysisResult.ats_score,
+            clarityScore: analysisResult.clarity_score,
+            strengths: analysisResult.strengths,
+            weaknesses: analysisResult.weaknesses,
+            keywordsMissing: analysisResult.ats_keywords_missing,
+            starBullets: analysisResult.star_bullets
+        });
+
+        return res.json({
+            ...analysisResult,
+            analysisId: analysisDocument._id
+        });
     } catch (err) {
         console.error('[analyzeResume]', err.message);
         return res.status(500).json({ error: 'Analysis failed: ' + err.message });

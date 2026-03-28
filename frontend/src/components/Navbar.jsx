@@ -2,9 +2,12 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
     Zap, Upload, LayoutDashboard, Lightbulb,
-    Sparkles, History, Menu, X
+    Sparkles, History, Menu, X, LogIn, User
 } from 'lucide-react';
 import { useState } from 'react';
+import { useAuth } from '../context/AuthContext';
+import LoginModal from './LoginModal';
+import SignupModal from './SignupModal';
 
 const navItems = [
     { to: '/', label: 'Home', icon: Zap },
@@ -17,7 +20,10 @@ const navItems = [
 
 export default function Navbar() {
     const [open, setOpen] = useState(false);
+    const [loginOpen, setLoginOpen] = useState(false);
+    const [signupOpen, setSignupOpen] = useState(false);
     const location = useLocation();
+    const { user, logout } = useAuth();
 
     return (
         <header className="fixed top-0 left-0 right-0 z-50">
@@ -53,11 +59,32 @@ export default function Navbar() {
 
                     {/* CTA */}
                     <div className="hidden md:flex items-center gap-3">
-                        <div className="flex items-center gap-1.5 text-xs text-nexus-muted">
+                        <div className="flex items-center gap-1.5 text-xs text-nexus-muted mr-2">
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                             AI Online
                         </div>
-                        <NavLink to="/upload" className="btn-primary text-xs py-2 px-4">
+
+                        {user ? (
+                            <div className="flex items-center gap-4">
+                                <div className="flex flex-col items-end">
+                                    <span className="text-xs font-bold text-nexus-text leading-none">{user.name}</span>
+                                    <button onClick={logout} className="text-[10px] text-nexus-muted hover:text-rose-400 transition-colors uppercase font-bold tracking-tighter">Sign Out</button>
+                                </div>
+                                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-violet-500 flex items-center justify-center border border-white/10 shadow-lg">
+                                    <User size={16} className="text-white" />
+                                </div>
+                            </div>
+                        ) : (
+                            <button
+                                onClick={() => setLoginOpen(true)}
+                                className="btn-secondary text-xs py-2 px-5 flex items-center gap-2"
+                            >
+                                <LogIn size={14} className="text-nexus-cyan" />
+                                Sign In
+                            </button>
+                        )}
+
+                        <NavLink to="/upload" className="btn-primary text-xs py-2.5 px-6 ml-2">
                             Analyze Resume
                         </NavLink>
                     </div>
@@ -95,6 +122,24 @@ export default function Navbar() {
                     </motion.div>
                 )}
             </div>
+
+            <LoginModal
+                isOpen={loginOpen}
+                onClose={() => setLoginOpen(false)}
+                onSwitchToSignup={() => {
+                    setLoginOpen(false);
+                    setSignupOpen(true);
+                }}
+            />
+
+            <SignupModal
+                isOpen={signupOpen}
+                onClose={() => setSignupOpen(false)}
+                onSwitchToLogin={() => {
+                    setSignupOpen(false);
+                    setLoginOpen(true);
+                }}
+            />
         </header>
     );
 }
